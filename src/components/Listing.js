@@ -3,20 +3,29 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Button from "react-bootstrap/Button";
 import Card from "react-bootstrap/Card";
-
-import { BACKEND_URL } from "../constants.js";
+import { useAuth0 } from "@auth0/auth0-react";
 
 const Listing = () => {
   const [listingId, setListingId] = useState();
   const [listing, setListing] = useState({});
 
+  const { user, loginWithRedirect, isAuthenticated, getAccessTokenSilently } =
+    useAuth0();
+
   useEffect(() => {
-    // If there is a listingId, retrieve the listing data
-    if (listingId) {
-      axios.get(`${BACKEND_URL}/listings/${listingId}`).then((response) => {
-        setListing(response.data);
-      });
+    try {
+      // If there is a listingId, retrieve the listing data
+      if (listingId) {
+        axios
+          .get(`${process.env.REACT_APP_BACKEND_URL}/listings/${listingId}`)
+          .then((response) => {
+            setListing(response.data);
+          });
+      }
+    } catch (error) {
+      console.error("Error retrieving listings", error);
     }
+
     // Only run this effect on change to listingId
   }, [listingId]);
 
@@ -36,10 +45,35 @@ const Listing = () => {
     }
   }
 
-  const handleClick = () => {
-    axios.put(`${BACKEND_URL}/listings/${listingId}`).then((response) => {
+  const handleClick = async () => {
+    // check if user is authenticated before allowing them to buy
+    if (!isAuthenticated) {
+      loginWithRedirect();
+    } else {
+      const accessToken = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: "https://carousell/api",
+          scope: "read:current_user",
+        },
+      });
+      console.log("accessToken", accessToken);
+      console.log("user.email", user.email);
+      console.log("isAuthenticated", isAuthenticated);
+
+      const response = await axios.put(
+        `${process.env.REACT_APP_BACKEND_URL}/listings/${listingId}`,
+        {
+          buyerEmail: user.email,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      console.log("response", response.data);
       setListing(response.data);
-    });
+    }
   };
 
   return (
@@ -48,7 +82,7 @@ const Listing = () => {
       <Card bg="dark">
         <Card.Body>
           {listingDetails}
-          <Button onClick={handleClick} disabled={listing.BuyerId}>
+          <Button onClick={handleClick} disabled={listing.buyerId}>
             Buy
           </Button>
         </Card.Body>
